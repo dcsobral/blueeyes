@@ -30,7 +30,7 @@ import com.weiglewilczek.slf4s.Logging
 class RealMongo(config: ConfigMap) extends Mongo {
   val ServerAndPortPattern = "(.+):(.+)".r
 
-  val disconnectTimeout = akka.actor.Actor.Timeout(config.getLong("shutdownTimeout", Long.MaxValue))
+  val disconnectTimeout = akka.actor.Actor.Timeout(config.getLong("shutdownTimeout", 120000))
 
   private lazy val mongo = {
     val options = new MongoOptions()

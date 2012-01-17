@@ -28,7 +28,7 @@ abstract class Stage[K, V](monitor: HealthMonitor = HealthMonitor.Noop) {
   def maximumCapacity: Int
 
   // override this timeout to choose a different timeout for shutdown.
-  implicit def stopTimeout: Timeout = Timeout(Long.MaxValue)
+  implicit def stopTimeout: Timeout = Timeout(120001)
 
   private class Cache extends scala.collection.mutable.Map[K, ExpirableValue[V]] { self =>
     private val impl = new javolution.util.FastMap[K, ExpirableValue[V]]
