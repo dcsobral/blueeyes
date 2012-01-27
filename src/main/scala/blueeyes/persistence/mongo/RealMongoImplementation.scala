@@ -70,7 +70,11 @@ private[mongo] class RealDatabase(val mongo: Mongo, database: DB, disconnectTime
   private class RealMongoActor extends Actor {
     self.dispatcher = RealDatabase.dispatcher
     def receive = {
-      case task: MongoQueryTask => self.reply(task.query(task.collection, task.isVerified))
+      case task: MongoQueryTask => try {
+        self.reply(task.query(task.collection, task.isVerified))
+      } catch {
+        case e : Exception => logger.error("Failure on query: " + task.query); throw e
+      }
     }
   }
 
@@ -92,7 +96,7 @@ private[mongo] class RealDatabase(val mongo: Mongo, database: DB, disconnectTime
   override def toString = "Mongo Database: " + database.getName
 }
 
-private[mongo] class RealDatabaseCollection(val collection: DBCollection, database: RealDatabase) extends DatabaseCollection{
+private[mongo] class RealDatabaseCollection(val collection: DBCollection, database: RealDatabase) extends DatabaseCollection with Logging {
   type V[B] = ValidationNEL[String, B]
 
   def requestDone() { collection.getDB.requestDone() }
@@ -101,7 +105,12 @@ private[mongo] class RealDatabaseCollection(val collection: DBCollection, databa
 
   def insert(objects: List[JObject]) = { 
     objects.map(MongoToJson.unapply(_)).sequence[V, DBObject].map{objects: List[DBObject] =>
-      collection.insert(objects)
+      try {
+        logger.trace("Inserting %s into %s".format(objects, collection))
+        collection.insert(objects)
+      } catch {
+        case t : Throwable => logger.error("Error on insert of %s into %s".format(objects, collection)); throw t
+      }
     }
   }
 

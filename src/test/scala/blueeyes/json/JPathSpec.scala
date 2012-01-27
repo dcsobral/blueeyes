@@ -1,5 +1,5 @@
 /*
- * Copyright 2010 John A. De Goes
+ * Copyright 2010,2012 John A. De Goes
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -35,6 +35,16 @@ object JPathSpec extends Specification with ScalaCheck with ArbitraryJPath with 
 
     "forgivingly parse initial field name without leading dot" in {
       JPath("foo.bar").nodes mustEqual (JPathField("foo") :: JPathField("bar") :: Nil)
+    }
+
+    "parse escaped strings" in {
+      JPath(""".foo.bar\.com""").nodes mustEqual (JPathField("foo") :: JPathField("bar.com") :: Nil)
+    }
+  }
+
+  "Path toString methods" should {
+    "properly escape paths containing dots" in {
+      JPath(JPathField("foo") :: JPathField("bar.com") :: Nil).path mustEqual """.foo.bar\.com"""
     }
   }
 

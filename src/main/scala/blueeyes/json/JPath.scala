@@ -1,5 +1,6 @@
 package blueeyes.json
 
+import blueeyes.util.SpecialCharTranscoder
 import util.matching.Regex
 
 import JsonAST._
@@ -73,7 +74,10 @@ sealed trait JPath { self =>
     expand0(Nil, nodes, jvalue)
   }
 
-  def path = nodes.mkString("")
+  def path = nodes.map { 
+    case JPathField(name) => JPath.DotEscaper.encode(name) 
+    case other => other
+  }.mkString(".", ".", "")
 
   def iterator = nodes.iterator
 
@@ -96,9 +100,13 @@ sealed case class JPathIndex(index: Int) extends JPathNode {
 }
 
 object JPath {
+  val DotEscaper = SpecialCharTranscoder.fromMap('\\',
+    Map('.' -> '.')
+  )
+
   private[this] case class CompositeJPath(nodes: List[JPathNode]) extends JPath 
 
-  private val PathPattern  = """\.|(?=\[\d+\])""".r
+  private val PathPattern  = """^\.|(?<!\\)\.|(?=\[\d+\])""".r
   private val IndexPattern = """^\[(\d+)\]$""".r
 
   val Identity = apply()
@@ -119,7 +127,7 @@ object JPath {
           (head match {
             case IndexPattern(index) => JPathIndex(index.toInt)
 
-            case name => JPathField(name)
+            case name => JPathField(DotEscaper.decode(name))
           }) :: acc
         )
     }
