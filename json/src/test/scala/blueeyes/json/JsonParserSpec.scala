@@ -51,6 +51,16 @@ object JsonParserSpec extends Specification with ArbitraryJValue with ScalaCheck
     results.zip(results.tail).forall(pair => pair._1 == pair._2) mustEqual true
   }
 
+  "fail to parse invalid JSON" in {
+    // can't have an array of key/value pairs!
+    parse("""[
+      "foo": {
+        "bar": { "baz": 1 }
+      },
+      "foo": null
+    ]""") must throwA[ParseException]
+  }
+
   "All valid string escape characters can be parsed" in {
     parse("[\"abc\\\"\\\\\\/\\b\\f\\n\\r\\t\\u00a0\\uffff\"]") must_== JArray(JString("abc\"\\/\b\f\n\r\t\u00a0\uffff")::Nil)
   }
