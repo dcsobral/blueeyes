@@ -50,7 +50,7 @@ class RealMongo(config: ConfigMap) extends Mongo {
       case Nil => sys.error("""MongoServers are not configured. Configure the value 'servers'. Format is '["host1:port1", "host2:port2", ...]'""")
     }
 
-    if (config.getBool("slaveOk", true)) { mongo.setReadPreference(ReadPreference.SECONDARY) }
+    if (config.getBool("slaveOk", true)) { mongo.setReadPreference(ReadPreference.SECONDARY) } else { mongo.setReadPreference(ReadPreference.PRIMARY) }
 
     mongo
   }
@@ -66,7 +66,7 @@ object RealDatabase {
                            .setMaxPoolSize(100).setKeepAliveTime(Duration(30, TimeUnit.SECONDS)).build
 }
 
-private[mongo] class RealDatabase(val mongo: Mongo, database: DB, disconnectTimeout: akka.actor.Actor.Timeout, insertTimeout : akka.actor.Actor.Timeout, operationTimeout : akka.actor.Actor.Timeout, poolSize: Int = 10) extends Database with Logging {
+private[mongo] class RealDatabase(val mongo: Mongo, val database: DB, disconnectTimeout: akka.actor.Actor.Timeout, insertTimeout : akka.actor.Actor.Timeout, operationTimeout : akka.actor.Actor.Timeout, poolSize: Int = 10) extends Database with Logging {
   private class RealMongoActor extends Actor {
     self.dispatcher = RealDatabase.dispatcher
     def receive = {
@@ -98,6 +98,16 @@ private[mongo] class RealDatabaseCollection(val collection: DBCollection, databa
   def requestDone() { collection.getDB.requestDone() }
 
   def requestStart() { collection.getDB.requestStart() }
+
+  def aggregation(pipeline : JArray, output : Option[String] = None): Option[JObject] = {
+    // Set up the command object (Java driver doesn't yet provide an interface for this)
+    val cmd = JObject(List(JField("aggregate", JString(collection.getName)), 
+                           JField("pipeline", pipeline)))
+
+    MongoToJson.unapply(cmd).flatMap { 
+      obj: DBObject => MongoToJson(database.database.command(obj))
+    }.toOption
+  }
 
   def insert(objects: List[JObject]) = { 
     objects.map(MongoToJson.unapply(_)).sequence[V, DBObject].map{objects: List[DBObject] =>
