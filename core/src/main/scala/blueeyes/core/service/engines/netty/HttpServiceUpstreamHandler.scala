@@ -8,7 +8,9 @@ import akka.dispatch.ExecutionContext
 import blueeyes.bkka._
 import blueeyes.concurrent.ReadWriteLock
 import blueeyes.core.http._
+import blueeyes.core.http.HttpStatusCodes.{InternalServerError, NotFound}
 import blueeyes.core.data._
+import blueeyes.core.data.DefaultBijections._
 import blueeyes.util._
 
 import com.weiglewilczek.slf4s.Logger
@@ -61,7 +63,8 @@ private[engines] class HttpServiceUpstreamHandler(service: AsyncHttpService[Byte
   private implicit val M: Monad[Future] = new FutureMonad(executionContext)
 
   override def messageReceived(ctx: ChannelHandlerContext, event: MessageEvent) {
-    val request = event.getMessage.asInstanceOf[HttpRequest[ByteChunk]]
+    val request = event.getMessage.asInstanceOf[HttpRequest[ByteChunk]] // FIXME: it won't reach here
+    ctx.setAttachment(request)
     service.service(request) match {
       case Success(responseFuture) =>
         pendingResponses += responseFuture
@@ -71,8 +74,12 @@ private[engines] class HttpServiceUpstreamHandler(service: AsyncHttpService[Byte
           writeResponse(request, event.getChannel, response)
         }
 
-      case Failure(notServed) => 
-        // FIXME: ???
+      case Failure(DispatchError(cause)) => 
+        writeResponse(request, ctx.getChannel, HttpResponse(cause))
+
+      case Failure(Inapplicable(_)) => 
+        writeResponse(request, ctx.getChannel,
+          HttpResponse(status = NotFound, content = Some("No service was found to be able to handle your request.")))
     }
   }
 
@@ -92,7 +99,15 @@ private[engines] class HttpServiceUpstreamHandler(service: AsyncHttpService[Byte
     logger.warn("An exception was raised by an I/O thread or a ChannelHandler", e.getCause)
 
     killPending(e.getCause)
-    // e.getChannel.close
+
+    val request = ctx.getAttachment.asInstanceOf[HttpRequest[ByteChunk]]
+
+    e.getCause match {
+      case HttpException(code, reason) =>
+        writeResponse(request, ctx.getChannel, HttpResponse(status = code, content = Some(reason)))
+      case _ =>
+        writeResponse(request, ctx.getChannel, HttpResponse(status = InternalServerError))
+    }
   }
 
   private def writeResponse(request: HttpRequest[ByteChunk], channel: Channel, response: HttpResponse[ByteChunk]) = {
@@ -135,7 +150,11 @@ private[engines] class HttpServiceUpstreamHandler(service: AsyncHttpService[Byte
 
   private def killPending(why: Throwable) {
     // Kill all pending responses to this channel:
-    pendingResponses.foreach(_.asInstanceOf[Promise[HttpResponse[ByteChunk]]].failure(why))
+    pendingResponses.foreach { pr =>
+      if (!pr.isCompleted) {
+        pr.asInstanceOf[Promise[HttpResponse[ByteChunk]]].failure(why)
+      }
+    }
     pendingResponses.clear()
   }
 }

@@ -81,6 +81,21 @@ class HttpServiceUpstreamHandlerSpec extends Specification with Mockito with Log
     Await.result(promise.failed, 10 seconds) must haveSuperclass[Throwable]
   }
 
+  "return a bad request code when server on bad urls" in {
+    val nettyHandler  = new HttpServiceUpstreamHandler(handler, defaultFutureDispatch)
+    val event        = mock[MessageEvent]
+    val stateEvent   = mock[ChannelStateEvent]
+    val promise      = Promise[HttpResponse[ByteChunk]]()
+
+    event.getMessage() answers { _ => throw HttpException(HttpStatusCodes.BadRequest, "bad mojo") }
+
+    nettyHandler.messageReceived(context, event)
+
+    nettyHandler.channelDisconnected(context, stateEvent)
+
+    Await.result(promise.failed, 10 seconds) must haveSuperclass[Throwable]
+  }
+
   class RequestMatcher(matchingResponce: NettyHttpResponse) extends ArgumentMatcher[NettyHttpResponse] {
      def matches(arg: Object ): Boolean = {
        val response = arg.asInstanceOf[NettyHttpResponse]
