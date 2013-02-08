@@ -1,7 +1,10 @@
 package blueeyes.core.service
 package engines.netty
 
-import org.jboss.netty.handler.codec.http.{HttpResponse => NettyHttpResponse}
+import org.jboss.netty.handler.codec.http.{HttpResponse => NettyHttpResponse,
+                                           DefaultHttpResponse => NettyDefaultHttpResponse,
+                                           HttpResponseStatus => NettyHttpResponseStatus,
+                                           HttpVersion => NettyHttpVersion}
 import org.jboss.netty.handler.stream.ChunkedInput
 import org.jboss.netty.channel._
 
@@ -82,18 +85,23 @@ class HttpServiceUpstreamHandlerSpec extends Specification with Mockito with Log
   }
 
   "return a bad request code when server on bad urls" in {
+    import org.mockito.Matchers
+
     val nettyHandler  = new HttpServiceUpstreamHandler(handler, defaultFutureDispatch)
     val event        = mock[MessageEvent]
     val stateEvent   = mock[ChannelStateEvent]
-    val promise      = Promise[HttpResponse[ByteChunk]]()
+    val exceptionEvent = new DefaultExceptionEvent(channel, HttpException(HttpStatusCodes.BadRequest, "bad mojo"))
 
-    event.getMessage() answers { _ => throw HttpException(HttpStatusCodes.BadRequest, "bad mojo") }
+    channel.isConnected() returns true
+    context.getChannel() returns channel
 
-    nettyHandler.messageReceived(context, event)
-
+    nettyHandler.exceptionCaught(context, exceptionEvent)
     nettyHandler.channelDisconnected(context, stateEvent)
 
-    Await.result(promise.failed, 10 seconds) must haveSuperclass[Throwable]
+    val badSyntaxStatus = new NettyHttpResponseStatus(400, "The request contains bad syntax or cannot be fulfilled.")
+    val expectedResponse = new NettyDefaultHttpResponse(NettyHttpVersion.HTTP_1_1, badSyntaxStatus)
+    val matchBadSyntaxResponse = new RequestMatcher(expectedResponse)
+    there was one(channel).write(Matchers argThat matchBadSyntaxResponse)
   }
 
   class RequestMatcher(matchingResponce: NettyHttpResponse) extends ArgumentMatcher[NettyHttpResponse] {
